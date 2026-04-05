@@ -1,124 +1,160 @@
 <template>
-  <div class="container">
-    <div class="card">
-      <div class="flex-between" style="margin-bottom: 24px;">
-        <button class="back-btn" @click="goBack">← 返回</button>
-        <h1 style="font-size: 24px; color: #1e1b4b;">检测详情</h1>
-        <div style="width: 60px;"></div>
-      </div>
+  <div class="detail-page">
+    <div class="container">
+      <div class="detail-card">
+        <div class="detail-header">
+          <button class="back-btn" @click="goBack">← 返回</button>
+          <h1>检测详情</h1>
+          <div style="width: 60px;"></div>
+        </div>
 
-      <!-- 基本信息 -->
-      <div class="detail-section">
-        <h3 class="section-title">基本信息</h3>
-        <div class="info-grid">
-          <div class="info-row">
-            <span class="info-label">标题：</span>
-            <span class="info-value">{{ record.title }}</span>
+        <div v-if="loading" class="flex-center" style="padding: 60px;">
+          <span class="spinner"></span>
+          <p style="margin-top: 16px;">加载中...</p>
+        </div>
+
+        <div v-else-if="record" class="detail-content">
+          <div class="detail-section">
+            <h3 class="section-title">基本信息</h3>
+            <div class="info-grid">
+              <div class="info-row">
+                <span class="info-label">标题：</span>
+                <span class="info-value">{{ record.title }}</span>
+              </div>
+              <div class="info-row">
+                <span class="info-label">检测时间：</span>
+                <span class="info-value">{{ record.date }}</span>
+              </div>
+            </div>
           </div>
-          <div class="info-row">
-            <span class="info-label">检测时间：</span>
-            <span class="info-value">{{ record.date }}</span>
+
+          <div class="detail-section">
+            <h3 class="section-title">原文内容</h3>
+            <div class="content-box">
+              {{ record.content }}
+            </div>
+          </div>
+
+          <div class="detail-section">
+            <h3 class="section-title">风险等级</h3>
+            <span :class="['risk-badge', record.risk === '高' ? 'high' : record.risk === '中' ? 'medium' : 'low']">
+              {{ record.risk }}风险
+            </span>
+          </div>
+
+          <div class="detail-section">
+            <h3 class="section-title">问题分析</h3>
+            <ul class="issue-list">
+              <li v-for="(issue, idx) in record.issues" :key="idx">{{ issue }}</li>
+            </ul>
+          </div>
+
+          <div class="detail-section">
+            <h3 class="section-title">改写建议</h3>
+            <ul class="suggestion-list">
+              <li v-for="(s, idx) in record.suggestions" :key="idx">{{ s }}</li>
+            </ul>
           </div>
         </div>
-      </div>
 
-      <!-- 原文内容 -->
-      <div class="detail-section">
-        <h3 class="section-title">原文内容</h3>
-        <div class="content-box">
-          {{ record.content }}
+        <div v-else class="empty-state">
+          未找到该检测记录
         </div>
-      </div>
-
-      <!-- 风险等级 -->
-      <div class="detail-section">
-        <h3 class="section-title">风险等级</h3>
-        <span :class="riskClass(record.risk)" style="display: inline-block; padding: 6px 20px;">
-          {{ record.risk }}风险
-        </span>
-      </div>
-
-      <!-- 问题分析 -->
-      <div class="detail-section">
-        <h3 class="section-title">问题分析</h3>
-        <ul class="issue-list">
-          <li v-for="(issue, idx) in record.issues" :key="idx">{{ issue }}</li>
-        </ul>
-      </div>
-
-      <!-- 改写建议 -->
-      <div class="detail-section">
-        <h3 class="section-title">改写建议</h3>
-        <ul class="suggestion-list">
-          <li v-for="(s, idx) in record.suggestions" :key="idx">{{ s }}</li>
-        </ul>
       </div>
     </div>
   </div>
 </template>
 
 <script setup>
-import { ref } from "vue"
-import { useRoute, useRouter } from "vue-router"
+import { ref, onMounted } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+import axios from 'axios'
 
 const route = useRoute()
 const router = useRouter()
 const id = route.params.id
+const record = ref(null)
+const loading = ref(false)
 
-// 假数据映射（后续替换为 API 调用）
-const fakeRecords = {
-  1: {
-    title: "人工智能伦理研究报告",
-    date: "2026-04-01",
-    content: "随着人工智能技术的快速发展，AI在学术领域的应用日益广泛。据统计，超过60%的大学生使用AI辅助完成作业。然而，这种趋势也带来了学术诚信方面的挑战。",
-    risk: "高",
-    issues: ["句式过于规整，AI特征明显", "缺乏具体引用来源", "连接词使用密集"],
-    suggestions: ["增加真实文献引用", "调整句式多样性", "加入个人观点和数据来源说明"]
-  },
-  2: {
-    title: "数字化转型论文片段",
-    date: "2026-04-02",
-    content: "企业数字化转型已成为必然趋势。首先，技术升级是基础；其次，组织变革是关键；此外，人才培养也不可忽视。",
-    risk: "中",
-    issues: ["连接词使用频繁", "表达略显模板化"],
-    suggestions: ["简化连接词", "增加具体案例"]
-  },
-  3: {
-    title: "教育技术应用分析",
-    date: "2026-04-03",
-    content: "在线教育平台为学生提供了灵活的学习方式，但同时也需要关注学习效果评估问题。",
-    risk: "低",
-    issues: ["部分表达略显通用"],
-    suggestions: ["补充具体数据支撑"]
+const loadDetail = async () => {
+  loading.value = true
+  try {
+    const response = await axios.get(`/api/checks/${id}`)
+    const data = response.data
+    record.value = {
+      title: data.title,
+      date: data.created_at ? data.created_at.slice(0, 10) : '',
+      content: data.input_text || '无内容',
+      risk: data.result?.overview?.risk_level === 'high' ? '高' 
+            : data.result?.overview?.risk_level === 'medium' ? '中' : '低',
+      issues: data.result?.paragraphs?.[0]?.reasons || ['暂无详细分析'],
+      suggestions: data.result?.paragraphs?.[0]?.suggestion?.actions || ['暂无建议']
+    }
+  } catch (err) {
+    console.error("加载详情失败", err)
+    record.value = null
+  } finally {
+    loading.value = false
   }
-}
-
-const record = ref(fakeRecords[id] || fakeRecords[1])
-
-const riskClass = (risk) => {
-  if (risk === "高") return "tag-high"
-  if (risk === "中") return "tag-medium"
-  return "tag-low"
 }
 
 const goBack = () => {
   router.push('/history')
 }
+
+onMounted(() => {
+  loadDetail()
+})
 </script>
 
 <style scoped>
+.detail-page {
+  min-height: calc(100vh - 76px);
+  background: linear-gradient(180deg, #faf7ff 0%, #f6f2ff 100%);
+  padding: 32px 0 48px;
+}
+
+.container {
+  width: min(1000px, calc(100% - 32px));
+  margin: 0 auto;
+}
+
+.detail-card {
+  background: rgba(255, 255, 255, 0.88);
+  border-radius: 28px;
+  padding: 32px;
+  border: 1px solid rgba(109, 40, 217, 0.1);
+  box-shadow: 0 16px 40px rgba(15, 23, 42, 0.06);
+}
+
+.detail-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 28px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid rgba(109, 40, 217, 0.1);
+}
+
 .back-btn {
-  background: #f1f5f9;
+  background: rgba(109, 40, 217, 0.08);
   border: none;
   padding: 8px 20px;
   border-radius: 30px;
-  font-size: 13px;
+  font-size: 14px;
   cursor: pointer;
   transition: 0.2s;
+  font-weight: 500;
 }
 
 .back-btn:hover {
-  background: #e2e8f0;
+  background: rgba(109, 40, 217, 0.15);
+}
+
+.detail-header h1 {
+  font-size: 24px;
+  color: #1e1b4b;
+  margin: 0;
 }
 
 .detail-section {
@@ -135,7 +171,7 @@ const goBack = () => {
 }
 
 .info-grid {
-  background: #f8fafc;
+  background: rgba(109, 40, 217, 0.04);
   border-radius: 16px;
   padding: 16px;
 }
@@ -157,12 +193,35 @@ const goBack = () => {
 }
 
 .content-box {
-  background: #f8fafc;
+  background: rgba(109, 40, 217, 0.04);
   padding: 16px;
   border-radius: 16px;
   line-height: 1.6;
   font-size: 14px;
   color: #334155;
+}
+
+.risk-badge {
+  display: inline-block;
+  padding: 6px 20px;
+  border-radius: 30px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.risk-badge.high {
+  background: #fee2e2;
+  color: #b91c1c;
+}
+
+.risk-badge.medium {
+  background: #ffedd5;
+  color: #b45309;
+}
+
+.risk-badge.low {
+  background: #dcfce7;
+  color: #15803d;
 }
 
 .issue-list, .suggestion-list {
@@ -178,5 +237,31 @@ const goBack = () => {
 
 .suggestion-list li {
   color: #6d28d9;
+}
+
+.empty-state {
+  text-align: center;
+  padding: 48px;
+  color: #94a3b8;
+}
+
+.flex-center {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+.spinner {
+  width: 32px;
+  height: 32px;
+  border: 3px solid rgba(109, 40, 217, 0.2);
+  border-top-color: #6d28d9;
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
 }
 </style>

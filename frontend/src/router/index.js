@@ -1,25 +1,41 @@
 import { createRouter, createWebHistory } from 'vue-router'
 
-import Detect from '../pages/Detect.vue'
-import History from '../pages/History.vue'
-import Detail from '../pages/Detail.vue'
-import Recommend from '../pages/Recommend.vue'
-import Assist from '../pages/Assist.vue'
-import About from '../pages/About.vue'
-
 const routes = [
-  { path: '/', redirect: '/detect' },
-  { path: '/detect', component: Detect },
-  { path: '/history', component: History },
-  { path: '/history/:id', component: Detail },
-  { path: '/recommend', component: Recommend },
-  { path: '/assist', component: Assist },
-  { path: '/about', component: About },
+  {
+    path: '/',
+    name: 'Home',
+    component: () => import('../pages/Home.vue')
+  },
+  {
+    path: '/detect',
+    name: 'Detect',
+    component: () => import('../pages/Detect.vue')
+  },
+  {
+    path: '/history',
+    name: 'History',
+    component: () => import('../pages/History.vue')
+  },
+  {
+    path: '/history/:id',
+    name: 'Detail',
+    component: () => import('../pages/Detail.vue')
+  },
+  {
+    path: '/recommend',
+    name: 'Recommend',
+    component: () => import('../pages/Recommend.vue')
+  },
+  {
+    path: '/assist',
+    name: 'Assist',
+    component: () => import('../pages/Assist.vue')
+  }
 ]
 
 const router = createRouter({
   history: createWebHistory(),
-  routes,
+  routes
 })
 
 export default router

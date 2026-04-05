@@ -1,5 +1,289 @@
+<template>
+  <div class="detect-page">
+    <div class="container">
+      <div class="flex" style="gap: 24px; align-items: flex-start;">
+        <!-- ========== 左侧：输入区 ========== -->
+        <div class="card" style="flex: 1.2;">
+          <!-- 输入模式切换 Tab -->
+          <div class="input-tabs">
+            <button
+              :class="['input-tab', { active: inputMode === 'upload' }]"
+              @click="inputMode = 'upload'"
+            >
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
+              </svg>
+              上传文档
+            </button>
+            <button
+              :class="['input-tab', { active: inputMode === 'text' }]"
+              @click="inputMode = 'text'"
+            >
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
+              </svg>
+              填写文本
+            </button>
+          </div>
+
+          <p v-if="error" class="error-msg">{{ error }}</p>
+
+          <!-- 上传模式 -->
+          <div v-if="inputMode === 'upload'" class="upload-zone-wrap">
+            <label class="upload-zone" :class="{ 'has-file': uploadedFileName }" @dragover.prevent @drop.prevent="handleDrop">
+              <input ref="fileInput" type="file" accept=".txt,.md,.docx,.pdf" @change="handleFileUpload" hidden />
+              <template v-if="!uploadedFileName">
+                <div class="upload-icon">
+                  <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                    <rect x="3" y="3" width="18" height="18" rx="3"/><path d="M9 12h6m-3-3v6"/>
+                  </svg>
+                </div>
+                <p class="upload-zone-title">点击或拖拽上传文档</p>
+                <p class="upload-zone-sub">支持 .docx · .pdf · .txt · .md · 最大 10 MB</p>
+              </template>
+              <template v-else>
+                <div class="upload-icon uploaded">
+                  <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><polyline points="9 15 11 17 15 13"/>
+                  </svg>
+                </div>
+                <p class="upload-zone-title">{{ uploadedFileName }}</p>
+                <p class="upload-zone-sub">点击重新选择文件</p>
+              </template>
+            </label>
+            <button v-if="uploadedFileName" class="clear-file-btn" @click.prevent="clearFile">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+              </svg>
+              移除文件
+            </button>
+            <!-- 上传进度条 -->
+            <div v-if="uploadProgress > 0 && uploadProgress < 100" class="progress-bar">
+              <div class="progress-fill" :style="{ width: uploadProgress + '%' }"></div>
+              <span class="progress-text">{{ uploadProgress }}%</span>
+            </div>
+          </div>
+
+          <!-- 文本模式 -->
+          <div v-else class="input-fields">
+            <div class="field-row">
+              <label class="field-label">
+                文本内容
+                <span class="char-count">{{ form.text.length }} 字</span>
+              </label>
+              <textarea
+                v-model="form.text"
+                class="text-area"
+                rows="10"
+                placeholder="粘贴 AI 生成或辅助创作的文本，系统将自动标出可疑引用、法条、数据和专家观点..."
+              />
+            </div>
+          </div>
+
+          <!-- 底部操作 -->
+          <div class="input-footer">
+            <p class="hint-line">本工具自动标出可疑引用、法条、数据，结果供提交前自查，不等同于官方结论。</p>
+            <div class="footer-actions">
+              <button class="btn-outline" :class="{ 'demo-active': isDemoLoaded }" @click="toggleDemo">
+                {{ isDemoLoaded ? "取消示例" : "载入示例" }}
+              </button>
+              <button class="btn-primary" :disabled="loading" @click="submitCheck">
+                <span v-if="loading" class="spinner"></span>
+                {{ loading ? "检测中..." : "开始检测 →" }}
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- ========== 右侧：结果区 ========== -->
+        <div class="card" style="flex: 2;">
+          <!-- 有结果时显示 -->
+          <template v-if="hasResult">
+            <!-- 概览 -->
+            <div class="overview-row">
+              <div class="gauge-wrap">
+                <svg class="gauge-svg" viewBox="0 0 120 70">
+                  <path d="M 10 65 A 54 54 0 0 1 110 65" fill="none" stroke="#e2e8f0" stroke-width="10" stroke-linecap="round"/>
+                  <path d="M 10 65 A 54 54 0 0 1 110 65" fill="none" :stroke="gaugeColor" stroke-width="10" stroke-linecap="round" :stroke-dasharray="GAUGE_CIRCUMFERENCE" :stroke-dashoffset="gaugeOffset" style="transition: stroke-dashoffset 0.8s ease"/>
+                  <text x="60" y="58" text-anchor="middle" class="gauge-score" :fill="gaugeColor">{{ overallScore }}</text>
+                  <text x="60" y="68" text-anchor="middle" class="gauge-label">AI 概率分</text>
+                </svg>
+                <div class="gauge-risk" :style="{ color: riskMeta.color, background: riskMeta.bg }">
+                  {{ riskMeta.label }}
+                </div>
+              </div>
+
+              <div class="overview-info">
+                <p class="overview-summary">{{ currentRecord.result.overview.summary }}</p>
+                <div class="dist-row">
+                  <div class="dist-item"><span class="dist-dot dot-low"></span>低风险 {{ currentRecord.result.overview.risk_distribution.low }} 段</div>
+                  <div class="dist-item"><span class="dist-dot dot-medium"></span>中风险 {{ currentRecord.result.overview.risk_distribution.medium }} 段</div>
+                  <div class="dist-item"><span class="dist-dot dot-high"></span>高风险 {{ currentRecord.result.overview.risk_distribution.high }} 段</div>
+                </div>
+                <div v-if="currentRecord.result.overview.claim_stats?.total" class="claim-stats-row">
+                  <span class="claim-stat-item stat-high">⚠ 高风险声明 {{ currentRecord.result.overview.claim_stats.high }} 处</span>
+                  <span class="claim-stat-item stat-medium">需核实声明 {{ currentRecord.result.overview.claim_stats.medium }} 处</span>
+                </div>
+                <p class="confidence-note">{{ currentRecord.result.overview.confidence_note }}</p>
+              </div>
+
+              <div class="overview-actions">
+                <button class="btn-outline sm" @click="exportReport">导出报告</button>
+              </div>
+            </div>
+
+            <!-- Tab 切换 -->
+            <div class="tabs">
+              <button :class="['tab', { active: activeTab === 'paragraphs' }]" @click="activeTab = 'paragraphs'">
+                逐段分析 <span class="tab-count">{{ currentRecord.result.paragraphs.length }}</span>
+              </button>
+              <button :class="['tab', { active: activeTab === 'papers' }]" @click="activeTab = 'papers'">
+                文献推荐 <span class="tab-count">{{ currentRecord.result.paper_recommendations?.reduce((s, r) => s + (r.items?.length ?? 0), 0) ?? 0 }}</span>
+              </button>
+            </div>
+
+            <!-- 逐段分析 -->
+            <div v-if="activeTab === 'paragraphs'" class="paragraphs-wrap">
+              <div v-for="para in currentRecord.result.paragraphs" :key="para.index" class="para-card" :style="{ background: paragraphBg(para.risk_level), borderLeftColor: paragraphBorder(para.risk_level) }">
+                <div class="para-header" @click="toggleParagraph(para.index)">
+                  <div class="para-meta">
+                    <span class="para-idx">{{ para.index }}</span>
+                    <span :class="['risk-tag', riskClass(para.risk_level)]">{{ para.risk_label }}</span>
+                    <span class="para-score">{{ para.score }} 分</span>
+                  </div>
+                  <div class="para-preview">{{ para.text.slice(0, 80) }}{{ para.text.length > 80 ? "…" : "" }}</div>
+                  <span class="para-toggle">{{ expandedParagraphs.has(para.index) ? "收起 ▲" : "展开详情 ▼" }}</span>
+                </div>
+
+                <div v-if="expandedParagraphs.has(para.index)" class="para-detail">
+                  <div class="detail-section">
+                    <p class="detail-label">原文</p>
+                    <p class="para-fulltext">{{ para.text }}</p>
+                  </div>
+
+                  <div v-if="para.claims?.length" class="detail-section">
+                    <p class="detail-label claim-label">⚠ 需核实声明 <span class="claim-count">{{ para.claims.length }}</span></p>
+                    <div class="claim-list">
+                      <div v-for="(c, i) in para.claims" :key="i" :class="['claim-item', c.risk === 'high' ? 'claim-high' : 'claim-medium']">
+                        <div class="claim-top">
+                          <span :class="['claim-type-tag', c.risk === 'high' ? 'ctag-high' : 'ctag-medium']">
+                            {{ { citation: '文献引用', legal: '法条引用', statistic: '精确数据', authority: '专家观点' }[c.type] }}
+                          </span>
+                          <code class="claim-text">{{ c.text }}</code>
+                        </div>
+                        <p class="claim-tip">{{ c.tip }}</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div class="detail-section">
+                    <p class="detail-label">检测原因</p>
+                    <ul class="reason-list"><li v-for="(r, i) in para.reasons" :key="i">{{ r }}</li></ul>
+                  </div>
+
+                  <div class="detail-section">
+                    <p class="detail-label">特征数据</p>
+                    <div class="feature-grid">
+                      <div v-for="f in para.features" :key="f.key" class="feature-item">
+                        <span class="feature-name">{{ f.label }}</span>
+                        <span class="feature-val">{{ f.value }}</span>
+                      </div>
+                      <div v-if="para.perplexity !== null" class="feature-item">
+                        <span class="feature-name">困惑度</span>
+                        <span class="feature-val">{{ para.perplexity }}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div v-if="para.suggestion" class="detail-section suggestion-box">
+                    <p class="detail-label">修改建议 <span class="provider-tag">{{ para.suggestion.provider }}</span></p>
+                    <p class="suggestion-direction">{{ para.suggestion.direction }}</p>
+                    <ol class="action-list"><li v-for="(a, i) in para.suggestion.actions" :key="i">{{ a }}</li></ol>
+                    <div v-if="para.suggestion.example_rewrite" class="rewrite-example">
+                      <p class="detail-label">改写示例</p>
+                      <p>{{ para.suggestion.example_rewrite }}</p>
+                    </div>
+                    <p v-if="para.suggestion.notes?.length" class="note-line">⚠ {{ para.suggestion.notes.join("；") }}</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- 文献推荐 -->
+            <div v-if="activeTab === 'papers'" class="papers-wrap">
+              <template v-for="rec in currentRecord.result.paper_recommendations" :key="rec.paragraph_index">
+                <div v-if="rec.items?.length" class="paper-group">
+                  <p class="paper-group-title">段落 {{ rec.paragraph_index }} 的相关文献</p>
+                  <p class="paper-query">检索词：{{ rec.query }}</p>
+                  <div class="paper-list">
+                    <div v-for="(paper, i) in rec.items" :key="i" class="paper-card">
+                      <p class="paper-title">{{ paper.title }}</p>
+                      <p class="paper-meta">{{ paper.authors }}<span v-if="paper.year"> · {{ paper.year }}</span><span v-if="paper.citations"> · 被引 {{ paper.citations }} 次</span></p>
+                      <div class="paper-links">
+                        <a v-if="paper.doi" :href="`https://doi.org/${paper.doi}`" target="_blank" class="paper-link">DOI</a>
+                        <a v-if="paper.url" :href="paper.url" target="_blank" class="paper-link">查看原文</a>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </template>
+              <p v-if="!currentRecord.result.paper_recommendations?.some(r => r.items?.length)" class="empty-hint">暂无文献推荐（可能因网络原因或关键词不足）</p>
+            </div>
+          </template>
+
+          <!-- 加载中 -->
+          <div v-else-if="viewLoading" class="flex-center" style="padding: 60px;">
+            <span class="spinner" style="width: 32px; height: 32px; border-width: 3px;"></span>
+            <p style="margin-top: 16px; color: #64748b;">加载中...</p>
+          </div>
+
+          <!-- 空状态 -->
+          <div v-else class="empty-state">
+            <div class="empty-icon">
+              <ScanSearch :size="34" stroke-width="2.4" />
+            </div>
+            <h3 class="empty-title">输入文本后点击「开始查证」</h3>
+            <p class="empty-desc">
+              系统将标记疑似虚构的文献、数据或引用，并提供可信性分析与修改建议。
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <!-- ========== 左侧边栏：历史记录 ========== -->
+      <aside class="history-sidebar">
+        <button class="btn-primary" style="width: 100%; margin-bottom: 20px;" @click="createNew">+ 新建检测</button>
+        <p class="sidebar-title">历史记录</p>
+        <div v-if="history.length" class="hist-list">
+          <button v-for="item in history" :key="item.id" class="hist-item" :class="{ active: currentRecord?.id === item.id }" @click="loadRecord(item.id)">
+            <div class="hist-info">
+              <span class="hist-title">{{ item.title }}</span>
+              <span class="hist-meta">
+                <span :class="['risk-tag', riskClass(item.overall_risk)]">{{ riskLabel(item.overall_risk) }}</span>
+                <span class="hist-date">{{ formatDate(item.created_at) }}</span>
+              </span>
+            </div>
+            <div class="hist-menu-wrap" @click.stop>
+              <button class="hist-more-btn" @click="toggleMenu(item.id, $event)">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></svg>
+              </button>
+              <div v-if="activeMenu === item.id" class="hist-dropdown">
+                <button class="hist-dropdown-item" @click="renameRecord(item.id, item.title)">重命名</button>
+                <button class="hist-dropdown-item danger" @click="deleteRecord(item.id)">删除</button>
+              </div>
+            </div>
+          </button>
+        </div>
+        <p v-else class="empty-hint">暂无记录</p>
+      </aside>
+    </div>
+  </div>
+</template>
+
 <script setup>
 import { computed, onMounted, ref } from "vue";
+import axios from 'axios';
+import { ScanSearch } from 'lucide-vue-next'
 
 // ── 演示文本（含典型AI造假声明，用于演示核查功能）──────────
 const DEMO_TEXT = `据《人工智能赋能高校思政教育研究》（李明，2024）指出，大学生使用生成式AI辅助完成课程作业的比例已达67%。王磊教授认为，AI写作已经彻底改变了中国大学生的学术规范，这一趋势具有重要意义。
@@ -22,6 +306,7 @@ const activeTab = ref("paragraphs");
 const viewLoading = ref(false);
 const inputMode = ref("text");
 const activeMenu = ref(null);
+const uploadProgress = ref(0);
 
 // ── 计算属性 ─────────────────────────────────────────
 const hasResult = computed(() => Boolean(currentRecord.value?.result));
@@ -66,19 +351,6 @@ onMounted(async () => {
 });
 
 // ── 工具函数 ─────────────────────────────────────────
-async function apiFetch(path, options = {}) {
-  const res = await fetch(path, options);
-  if (res.status === 204) return null;
-  let data;
-  try {
-    data = await res.json();
-  } catch {
-    throw new Error(`服务器异常（HTTP ${res.status}），文件可能过大或解析超时，请检查后端日志`);
-  }
-  if (!res.ok) throw new Error(data.message || "请求失败");
-  return data;
-}
-
 function riskClass(level) {
   return { low: "tag-low", medium: "tag-medium", high: "tag-high" }[level] ?? "tag-low";
 }
@@ -113,9 +385,11 @@ function paragraphBorder(level) {
 // ── API 调用 ─────────────────────────────────────────
 async function loadHistory() {
   try {
-    const data = await apiFetch("/api/checks");
-    history.value = data.items ?? [];
-  } catch {}
+    const response = await axios.get('/api/checks');
+    history.value = response.data.items ?? [];
+  } catch (err) {
+    console.error("加载历史失败", err);
+  }
 }
 
 async function loadRecord(id) {
@@ -123,11 +397,12 @@ async function loadRecord(id) {
   currentRecord.value = null;
   error.value = "";
   try {
-    currentRecord.value = await apiFetch(`/api/checks/${id}`);
+    const response = await axios.get(`/api/checks/${id}`);
+    currentRecord.value = response.data;
     expandedParagraphs.value = new Set();
     activeTab.value = "paragraphs";
   } catch (err) {
-    showError(err.message);
+    showError(err.response?.data?.message || "加载失败");
   } finally {
     viewLoading.value = false;
   }
@@ -136,24 +411,30 @@ async function loadRecord(id) {
 async function deleteRecord(id) {
   activeMenu.value = null;
   if (!confirm("确定删除这条记录？")) return;
-  await apiFetch(`/api/checks/${id}`, { method: "DELETE" });
-  if (currentRecord.value?.id === id) currentRecord.value = null;
-  await loadHistory();
+  try {
+    await axios.delete(`/api/checks/${id}`);
+    if (currentRecord.value?.id === id) currentRecord.value = null;
+    await loadHistory();
+  } catch (err) {
+    showError("删除失败");
+  }
 }
 
 async function renameRecord(id, currentTitle) {
   activeMenu.value = null;
   const newTitle = prompt("请输入新标题：", currentTitle);
   if (!newTitle || newTitle.trim() === currentTitle) return;
-  await apiFetch(`/api/checks/${id}`, {
-    method: "PATCH",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ title: newTitle.trim().slice(0, 80) }),
-  });
-  if (currentRecord.value?.id === id) {
-    currentRecord.value = { ...currentRecord.value, title: newTitle.trim().slice(0, 80) };
+  try {
+    await axios.patch(`/api/checks/${id}`, { 
+      title: newTitle.trim().slice(0, 80) 
+    });
+    if (currentRecord.value?.id === id) {
+      currentRecord.value = { ...currentRecord.value, title: newTitle.trim().slice(0, 80) };
+    }
+    await loadHistory();
+  } catch (err) {
+    showError("重命名失败");
   }
-  await loadHistory();
 }
 
 function toggleMenu(id, event) {
@@ -172,32 +453,38 @@ async function submitCheck() {
   }
   loading.value = true;
   error.value = "";
+  uploadProgress.value = 0;
   try {
-    let record;
+    let response;
     if (uploadedFile.value) {
       const autoTitle = uploadedFileName.value.replace(/\.[^/.]+$/, "") || "未命名文档";
       const fd = new FormData();
       fd.append("file", uploadedFile.value);
       fd.append("title", autoTitle);
-      record = await apiFetch("/api/checks", { method: "POST", body: fd });
-      form.value.text = record.input_text;
+      response = await axios.post('/api/checks', fd, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+        onUploadProgress: (progressEvent) => {
+          uploadProgress.value = Math.round((progressEvent.loaded * 100) / progressEvent.total);
+        }
+      });
+      form.value.text = response.data.input_text;
     } else {
       const autoTitle = form.value.text.trim().slice(0, 12) || "未命名检测";
-      record = await apiFetch("/api/checks", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title: autoTitle, text: form.value.text }),
+      response = await axios.post('/api/checks', {
+        title: autoTitle,
+        text: form.value.text
       });
     }
-    currentRecord.value = record;
+    currentRecord.value = response.data;
     expandedParagraphs.value = new Set();
     activeTab.value = "paragraphs";
     clearFile();
     await loadHistory();
   } catch (err) {
-    showError(err.message);
+    showError(err.response?.data?.message || err.message || "请求失败");
   } finally {
     loading.value = false;
+    uploadProgress.value = 0;
   }
 }
 
@@ -291,285 +578,64 @@ function exportReport() {
 }
 </script>
 
-<template>
-  <div class="container">
-    <div class="flex" style="gap: 24px; align-items: flex-start;">
-      <!-- ========== 左侧：输入区 ========== -->
-      <div class="card" style="flex: 1.2;">
-        <!-- 输入模式切换 Tab -->
-        <div class="input-tabs">
-          <button
-            :class="['input-tab', { active: inputMode === 'upload' }]"
-            @click="inputMode = 'upload'"
-          >
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
-            </svg>
-            上传文档
-          </button>
-          <button
-            :class="['input-tab', { active: inputMode === 'text' }]"
-            @click="inputMode = 'text'"
-          >
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
-            </svg>
-            填写文本
-          </button>
-        </div>
-
-        <p v-if="error" class="error-msg">{{ error }}</p>
-
-        <!-- 上传模式 -->
-        <div v-if="inputMode === 'upload'" class="upload-zone-wrap">
-          <label class="upload-zone" :class="{ 'has-file': uploadedFileName }" @dragover.prevent @drop.prevent="handleDrop">
-            <input ref="fileInput" type="file" accept=".txt,.md,.docx,.pdf" @change="handleFileUpload" hidden />
-            <template v-if="!uploadedFileName">
-              <div class="upload-icon">
-                <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-                  <rect x="3" y="3" width="18" height="18" rx="3"/><path d="M9 12h6m-3-3v6"/>
-                </svg>
-              </div>
-              <p class="upload-zone-title">点击或拖拽上传文档</p>
-              <p class="upload-zone-sub">支持 .docx · .pdf · .txt · .md · 最大 10 MB</p>
-            </template>
-            <template v-else>
-              <div class="upload-icon uploaded">
-                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><polyline points="9 15 11 17 15 13"/>
-                </svg>
-              </div>
-              <p class="upload-zone-title">{{ uploadedFileName }}</p>
-              <p class="upload-zone-sub">点击重新选择文件</p>
-            </template>
-          </label>
-          <button v-if="uploadedFileName" class="clear-file-btn" @click.prevent="clearFile">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-              <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
-            </svg>
-            移除文件
-          </button>
-        </div>
-
-        <!-- 文本模式 -->
-        <div v-else class="input-fields">
-          <div class="field-row">
-            <label class="field-label">
-              文本内容
-              <span class="char-count">{{ form.text.length }} 字</span>
-            </label>
-            <textarea
-              v-model="form.text"
-              class="text-area"
-              rows="10"
-              placeholder="粘贴 AI 生成或辅助创作的文本，系统将自动标出可疑引用、法条、数据和专家观点..."
-            />
-          </div>
-        </div>
-
-        <!-- 底部操作 -->
-        <div class="input-footer">
-          <p class="hint-line">本工具自动标出可疑引用、法条、数据，结果供提交前自查，不等同于官方结论。</p>
-          <div class="footer-actions">
-            <button class="btn-outline" :class="{ 'demo-active': isDemoLoaded }" @click="toggleDemo">
-              {{ isDemoLoaded ? "取消示例" : "载入示例" }}
-            </button>
-            <button class="btn-primary" :disabled="loading" @click="submitCheck">
-              <span v-if="loading" class="spinner"></span>
-              {{ loading ? "检测中..." : "开始检测 →" }}
-            </button>
-          </div>
-        </div>
-      </div>
-
-      <!-- ========== 右侧：结果区 ========== -->
-      <div class="card" style="flex: 2;">
-        <!-- 有结果时显示 -->
-        <template v-if="hasResult">
-          <!-- 概览 -->
-          <div class="overview-row">
-            <div class="gauge-wrap">
-              <svg class="gauge-svg" viewBox="0 0 120 70">
-                <path d="M 10 65 A 54 54 0 0 1 110 65" fill="none" stroke="#e2e8f0" stroke-width="10" stroke-linecap="round"/>
-                <path d="M 10 65 A 54 54 0 0 1 110 65" fill="none" :stroke="gaugeColor" stroke-width="10" stroke-linecap="round" :stroke-dasharray="GAUGE_CIRCUMFERENCE" :stroke-dashoffset="gaugeOffset" style="transition: stroke-dashoffset 0.8s ease"/>
-                <text x="60" y="58" text-anchor="middle" class="gauge-score" :fill="gaugeColor">{{ overallScore }}</text>
-                <text x="60" y="68" text-anchor="middle" class="gauge-label">AI 概率分</text>
-              </svg>
-              <div class="gauge-risk" :style="{ color: riskMeta.color, background: riskMeta.bg }">
-                {{ riskMeta.label }}
-              </div>
-            </div>
-
-            <div class="overview-info">
-              <p class="overview-summary">{{ currentRecord.result.overview.summary }}</p>
-              <div class="dist-row">
-                <div class="dist-item"><span class="dist-dot dot-low"></span>低风险 {{ currentRecord.result.overview.risk_distribution.low }} 段</div>
-                <div class="dist-item"><span class="dist-dot dot-medium"></span>中风险 {{ currentRecord.result.overview.risk_distribution.medium }} 段</div>
-                <div class="dist-item"><span class="dist-dot dot-high"></span>高风险 {{ currentRecord.result.overview.risk_distribution.high }} 段</div>
-              </div>
-              <div v-if="currentRecord.result.overview.claim_stats?.total" class="claim-stats-row">
-                <span class="claim-stat-item stat-high">⚠ 高风险声明 {{ currentRecord.result.overview.claim_stats.high }} 处</span>
-                <span class="claim-stat-item stat-medium">需核实声明 {{ currentRecord.result.overview.claim_stats.medium }} 处</span>
-              </div>
-              <p class="confidence-note">{{ currentRecord.result.overview.confidence_note }}</p>
-            </div>
-
-            <div class="overview-actions">
-              <button class="btn-outline sm" @click="exportReport">导出报告</button>
-            </div>
-          </div>
-
-          <!-- Tab 切换 -->
-          <div class="tabs">
-            <button :class="['tab', { active: activeTab === 'paragraphs' }]" @click="activeTab = 'paragraphs'">
-              逐段分析 <span class="tab-count">{{ currentRecord.result.paragraphs.length }}</span>
-            </button>
-            <button :class="['tab', { active: activeTab === 'papers' }]" @click="activeTab = 'papers'">
-              文献推荐 <span class="tab-count">{{ currentRecord.result.paper_recommendations?.reduce((s, r) => s + (r.items?.length ?? 0), 0) ?? 0 }}</span>
-            </button>
-          </div>
-
-          <!-- 逐段分析 -->
-          <div v-if="activeTab === 'paragraphs'" class="paragraphs-wrap">
-            <div v-for="para in currentRecord.result.paragraphs" :key="para.index" class="para-card" :style="{ background: paragraphBg(para.risk_level), borderLeftColor: paragraphBorder(para.risk_level) }">
-              <div class="para-header" @click="toggleParagraph(para.index)">
-                <div class="para-meta">
-                  <span class="para-idx">{{ para.index }}</span>
-                  <span :class="['risk-tag', riskClass(para.risk_level)]">{{ para.risk_label }}</span>
-                  <span class="para-score">{{ para.score }} 分</span>
-                </div>
-                <div class="para-preview">{{ para.text.slice(0, 80) }}{{ para.text.length > 80 ? "…" : "" }}</div>
-                <span class="para-toggle">{{ expandedParagraphs.has(para.index) ? "收起 ▲" : "展开详情 ▼" }}</span>
-              </div>
-
-              <div v-if="expandedParagraphs.has(para.index)" class="para-detail">
-                <div class="detail-section">
-                  <p class="detail-label">原文</p>
-                  <p class="para-fulltext">{{ para.text }}</p>
-                </div>
-
-                <div v-if="para.claims?.length" class="detail-section">
-                  <p class="detail-label claim-label">⚠ 需核实声明 <span class="claim-count">{{ para.claims.length }}</span></p>
-                  <div class="claim-list">
-                    <div v-for="(c, i) in para.claims" :key="i" :class="['claim-item', c.risk === 'high' ? 'claim-high' : 'claim-medium']">
-                      <div class="claim-top">
-                        <span :class="['claim-type-tag', c.risk === 'high' ? 'ctag-high' : 'ctag-medium']">
-                          {{ { citation: '文献引用', legal: '法条引用', statistic: '精确数据', authority: '专家观点' }[c.type] }}
-                        </span>
-                        <code class="claim-text">{{ c.text }}</code>
-                      </div>
-                      <p class="claim-tip">{{ c.tip }}</p>
-                    </div>
-                  </div>
-                </div>
-
-                <div class="detail-section">
-                  <p class="detail-label">检测原因</p>
-                  <ul class="reason-list"><li v-for="(r, i) in para.reasons" :key="i">{{ r }}</li></ul>
-                </div>
-
-                <div class="detail-section">
-                  <p class="detail-label">特征数据</p>
-                  <div class="feature-grid">
-                    <div v-for="f in para.features" :key="f.key" class="feature-item">
-                      <span class="feature-name">{{ f.label }}</span>
-                      <span class="feature-val">{{ f.value }}</span>
-                    </div>
-                    <div v-if="para.perplexity !== null" class="feature-item">
-                      <span class="feature-name">困惑度</span>
-                      <span class="feature-val">{{ para.perplexity }}</span>
-                    </div>
-                  </div>
-                </div>
-
-                <div v-if="para.suggestion" class="detail-section suggestion-box">
-                  <p class="detail-label">修改建议 <span class="provider-tag">{{ para.suggestion.provider }}</span></p>
-                  <p class="suggestion-direction">{{ para.suggestion.direction }}</p>
-                  <ol class="action-list"><li v-for="(a, i) in para.suggestion.actions" :key="i">{{ a }}</li></ol>
-                  <div v-if="para.suggestion.example_rewrite" class="rewrite-example">
-                    <p class="detail-label">改写示例</p>
-                    <p>{{ para.suggestion.example_rewrite }}</p>
-                  </div>
-                  <p v-if="para.suggestion.notes?.length" class="note-line">⚠ {{ para.suggestion.notes.join("；") }}</p>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <!-- 文献推荐 -->
-          <div v-if="activeTab === 'papers'" class="papers-wrap">
-            <template v-for="rec in currentRecord.result.paper_recommendations" :key="rec.paragraph_index">
-              <div v-if="rec.items?.length" class="paper-group">
-                <p class="paper-group-title">段落 {{ rec.paragraph_index }} 的相关文献</p>
-                <p class="paper-query">检索词：{{ rec.query }}</p>
-                <div class="paper-list">
-                  <div v-for="(paper, i) in rec.items" :key="i" class="paper-card">
-                    <p class="paper-title">{{ paper.title }}</p>
-                    <p class="paper-meta">{{ paper.authors }}<span v-if="paper.year"> · {{ paper.year }}</span><span v-if="paper.citations"> · 被引 {{ paper.citations }} 次</span></p>
-                    <div class="paper-links">
-                      <a v-if="paper.doi" :href="`https://doi.org/${paper.doi}`" target="_blank" class="paper-link">DOI</a>
-                      <a v-if="paper.url" :href="paper.url" target="_blank" class="paper-link">查看原文</a>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </template>
-            <p v-if="!currentRecord.result.paper_recommendations?.some(r => r.items?.length)" class="empty-hint">暂无文献推荐（可能因网络原因或关键词不足）</p>
-          </div>
-        </template>
-
-        <!-- 加载中 -->
-        <div v-else-if="viewLoading" class="flex-center" style="padding: 60px;">
-          <span class="spinner" style="width: 32px; height: 32px; border-width: 3px;"></span>
-          <p style="margin-top: 16px; color: #64748b;">加载中...</p>
-        </div>
-
-        <!-- 空状态 -->
-        <div v-else class="flex-center" style="flex-direction: column; padding: 60px 20px;">
-          <div class="empty-illustration">
-            <svg width="64" height="64" viewBox="0 0 64 64" fill="none">
-              <circle cx="32" cy="32" r="30" stroke="#c7d2fe" stroke-width="2"/>
-              <path d="M20 32 Q32 18 44 32" stroke="#6d28d9" stroke-width="2.5" stroke-linecap="round" fill="none"/>
-              <circle cx="23" cy="26" r="3" fill="#6d28d9"/>
-              <circle cx="41" cy="26" r="3" fill="#6d28d9"/>
-            </svg>
-          </div>
-          <p class="empty-title">输入文本后点击「开始检测」</p>
-          <p class="empty-sub">系统将分析每个段落的 AI 生成特征，并提供可操作的修改建议。</p>
-        </div>
-      </div>
-    </div>
-
-    <!-- ========== 左侧边栏：历史记录 ========== -->
-    <aside class="history-sidebar">
-      <button class="btn-primary" style="width: 100%; margin-bottom: 20px;" @click="createNew">+ 新建检测</button>
-      <p class="sidebar-title">历史记录</p>
-      <div v-if="history.length" class="hist-list">
-        <button v-for="item in history" :key="item.id" class="hist-item" :class="{ active: currentRecord?.id === item.id }" @click="loadRecord(item.id)">
-          <div class="hist-info">
-            <span class="hist-title">{{ item.title }}</span>
-            <span class="hist-meta">
-              <span :class="['risk-tag', riskClass(item.overall_risk)]">{{ riskLabel(item.overall_risk) }}</span>
-              <span class="hist-date">{{ formatDate(item.created_at) }}</span>
-            </span>
-          </div>
-          <div class="hist-menu-wrap" @click.stop>
-            <button class="hist-more-btn" @click="toggleMenu(item.id, $event)">
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></svg>
-            </button>
-            <div v-if="activeMenu === item.id" class="hist-dropdown">
-              <button class="hist-dropdown-item" @click="renameRecord(item.id, item.title)">重命名</button>
-              <button class="hist-dropdown-item danger" @click="deleteRecord(item.id)">删除</button>
-            </div>
-          </div>
-        </button>
-      </div>
-      <p v-else class="empty-hint">暂无记录</p>
-    </aside>
-  </div>
-</template>
-
 <style scoped>
+.detect-page {
+  min-height: calc(100vh - 88px);
+  background: linear-gradient(180deg, #faf7ff 0%, #f6f2ff 100%);
+  padding: 32px 0 48px;
+}
+
+.container {
+  width: min(1400px, calc(100% - 32px));
+  margin: 0 auto;
+}
+
+.flex {
+  display: flex;
+}
+
+.card {
+  background: rgba(255, 255, 255, 0.88);
+  border-radius: 24px;
+  padding: 24px;
+  border: 1px solid rgba(109, 40, 217, 0.1);
+  box-shadow: 0 16px 40px rgba(15, 23, 42, 0.06);
+}
+
+.btn-primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 46px;
+  padding: 0 22px;
+  border-radius: 999px;
+  text-decoration: none;
+  font-weight: 700;
+  color: #fff;
+  background: linear-gradient(135deg, #7c3aed, #5b21b6);
+  border: none;
+  cursor: pointer;
+}
+
+.btn-primary:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.btn-outline {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 46px;
+  padding: 0 22px;
+  border-radius: 999px;
+  font-weight: 700;
+  background: transparent;
+  border: 1px solid rgba(109, 40, 217, 0.3);
+  color: #6d28d9;
+  cursor: pointer;
+}
+
 /* 输入区样式 */
 .input-tabs {
   display: flex;
@@ -637,6 +703,30 @@ function exportReport() {
   display: inline-flex;
   align-items: center;
   gap: 6px;
+}
+
+.progress-bar {
+  margin-top: 12px;
+  background: #e2e8f0;
+  border-radius: 20px;
+  height: 8px;
+  position: relative;
+  overflow: hidden;
+}
+
+.progress-fill {
+  background: #6d28d9;
+  border-radius: 20px;
+  height: 100%;
+  transition: width 0.3s ease;
+}
+
+.progress-text {
+  position: absolute;
+  right: 0;
+  top: -20px;
+  font-size: 11px;
+  color: #6d28d9;
 }
 
 .text-area {
@@ -1236,18 +1326,41 @@ function exportReport() {
   to { transform: rotate(360deg); }
 }
 
-.empty-illustration {
-  margin-bottom: 16px;
+/* 空状态样式 */
+.empty-state {
+  min-height: 320px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 40px 24px;
+}
+
+.empty-icon {
+  width: 76px;
+  height: 76px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  margin-bottom: 18px;
+  background: rgba(109, 40, 217, 0.08);
+  color: #6d28d9;
+  box-shadow: 0 10px 30px rgba(109, 40, 217, 0.12);
 }
 
 .empty-title {
-  font-weight: 500;
-  margin-bottom: 8px;
-  color: #1e293b;
+  margin: 0 0 10px;
+  font-size: 18px;
+  font-weight: 700;
+  color: #1e1b4b;
 }
 
-.empty-sub {
-  font-size: 13px;
+.empty-desc {
+  margin: 0;
+  max-width: 460px;
+  font-size: 14px;
+  line-height: 1.8;
   color: #64748b;
 }
 
